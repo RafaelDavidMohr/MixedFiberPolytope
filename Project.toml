@@ -1,0 +1,14 @@
+name = "MixedFiberPolytope"
+uuid = "466614e4-a400-470f-bb55-a9eec6736810"
+authors = ["Rafael Mohr <rafael.mohr@inria.fr>"]
+version = "0.1.0"
+
+[deps]
+DynamicPolynomials = "7c1d4256-1411-5781-91ec-d7bc3513ac07"
+MixedSubdivisions = "291d046c-3347-11e9-1e74-c3d251d406c6"
+Oscar = "f1435218-dba5-11e9-1e4d-f1a5fab5fc13"
+
+[compat]
+DynamicPolynomials = "0.6.1"
+MixedSubdivisions = "1.1.5"
+Oscar = "1.2.2"
