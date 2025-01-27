@@ -22,7 +22,7 @@ new variables `t_i`.
 """
 function mixed_fiber_polytope(F::Vector{P};
                               implicit = false) where {P <: Union{MPolyRingElem, Polynomial}}
-    A = (construct_support).(F)
+    A = construct_support(F)
     if implicit
         @assert ambient_dim(A) == length(A) - 1 "unsuitable number of variables"
         A = implicit_support(A)
