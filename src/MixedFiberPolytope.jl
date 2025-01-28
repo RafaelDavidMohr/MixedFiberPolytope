@@ -10,7 +10,7 @@ const Support = Vector{Matrix{Int32}}
 const MixSub = Vector{Tuple{Int, Int, Int}}
 
 """
-    mixed_fiber_polytope(F::Vector{P}; implicit = false) where {P <: Union{MPolyRingElem, Polynomial}}
+    mixed_fiber_polytope(F::Vector{P}; implicit = false, epsinv = 50000) where {P <: Union{MPolyRingElem, Polynomial}}
 
 If `implicit == false`, compute the mixed fiber polytope associated to
 the Newton polyhedra of `F` w.r.t. the first `n-k` variables where `k
@@ -19,15 +19,20 @@ the Newton polyhedra of `F` w.r.t. the first `n-k` variables where `k
 If `implicit == true`, compute the mixed fiber polytope associated
 to the Newton polyhedra of the system given by `t_i - F[i]` w.r.t.
 new variables `t_i`. 
+
+`epsinv` affects the likely correctness of the output, the larger it is,
+the more likely the output is correct. The size of `epsinv` does not
+affect the computation time but may cause overflow errors.
 """
 function mixed_fiber_polytope(F::Vector{P};
-                              implicit = false) where {P <: Union{MPolyRingElem, Polynomial}}
+                              implicit = false,
+                              epsinv = 2^24) where {P <: Union{MPolyRingElem, Polynomial}}
     A = construct_support(F)
     if implicit
         @assert ambient_dim(A) == length(A) - 1 "unsuitable number of variables"
         A = implicit_support(A)
     end
-    return mixed_fiber_polytope(A)
+    return mixed_fiber_polytope(A, epsinv = epsinv)
 end
 
 """
@@ -36,8 +41,12 @@ end
 Compute the mixed fiber polytope associated to the convex hulls of the
 columns of each matrix in `A` w.r.t. the first `n-k` dimensions where
 `k = length(A) - 1`.
+
+`epsinv` affects the likely correctness of the output, the larger it is,
+the more likely the output is correct. The size of `epsinv` does not
+affect the computation time but may cause overflow errors.
 """
-function mixed_fiber_polytope(A::Support)
+function mixed_fiber_polytope(A::Support; epsinv = 2^24)
 
     n = ambient_dim(A)
     k = length(A) - 1
@@ -68,8 +77,8 @@ function mixed_fiber_polytope(A::Support)
     end
 
     v_orac = w -> begin
-        w_rand = (qq_to_float).(w) + (rand(Float32, length(w)) ./ 1000)
-        return mfp_vert(A, pA, fiber_dict, w_rand)
+        w_rand = (qq_to_float).(w) + (rand(Float32, length(w)) ./ 10000)
+        return mfp_vert(A, pA, fiber_dict, w_rand, epsinv)
     end
 
     return construct_polytope(n - k, v_orac)
@@ -78,7 +87,8 @@ end
 function mfp_vert(A::Support,
                   pA::Support,
                   fiber_dict::Vector{Dict{Int, Vector{Int}}},
-                  w::Vector{Float32})
+                  w::Vector{Float32},
+                  epsinv::Int)
 
     n = ambient_dim(A)
     k = length(A) - 1
@@ -104,7 +114,7 @@ function mfp_vert(A::Support,
     msd_weights = [Int32[] for _ in 1:k+1]
     for i in eachindex(coh_weights)
         coh_vec = coh_weights[i]
-        msd_weights[i] = [Int32(round(e)) for e in 50000*coh_vec]
+        msd_weights[i] = [Int32(round(e)) for e in epsinv*coh_vec]
     end
 
     mixed_subdiv = mixed_cells_overdet(pA, msd_weights)
