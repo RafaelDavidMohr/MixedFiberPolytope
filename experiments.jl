@@ -2,8 +2,6 @@ using MixedFiberPolytope
 using Oscar
 using IterTools
 
-using Groebner
-
 
 #Randomize general polynomial of degree d over the ring R
 function rand_poly(deg, vars)
@@ -71,42 +69,65 @@ end
 
 
 
-R, (x1111, x111, x11, x, x1, x2, x3) = polynomial_ring(GF(65521), ["x1111", "x111", "x11", "x", "x1", "x2", "x3"])
+#R, (x1111, x111, x11, y, x1, x2, x3) = polynomial_ring(GF(65521), ["x1111", "x111", "x11", "y", "x1", "x2", "x3"])
 
-cases = []
+R, (y, x11, x12, x1, x2) = polynomial_ring(ZZ, ["y", "x11", "x12", "x1", "x2"])
 
-push!(
-    cases,
-    Dict(
-        :name => "Generic system [2, 1, 1]",
-        :polys => [rand_poly(2, [x1, x2, x3]), rand_poly(1, [x1, x2, x3]), rand_poly(1, [x1, x2, x3])],
-    )
-)
+g1 = 245*x1^2 + x1 * x2 + 2313*x2^2 + 5*x1 + 16*x2 + 1
+g2 = x1 + 17*x2 + 100
 
- for c in cases
+f0 = y - x1
+
+f1 = x11 - g1
+
+f2 = x12 - ( x11 * derivative(g1, x1) + g2 * derivative(g1, x2) )
+
+F = [f0, f1, f2]
+
+
+polys_new = [sum([rand(1:500)*m for m in Oscar.monomials(p)]) for p in F] 
+print(polys_new)
+
+mf = mixed_fiber_polytope(polys_new, implicit = false, epsinv = 2^24)
+mf_size = length(lattice_points(mf))  
+print(mf_size)
+   
+
+
+# cases = []
+
+# push!(
+#     cases,
+#     Dict(
+#         :name => "Generic system [2, 1, 1]",
+#         :polys => [rand_poly(2, [x1, x2, x3]), rand_poly(1, [x1, x2, x3]), rand_poly(1, [x1, x2, x3])],
+#     )
+# )
+
+#  for c in cases
 
     
-    polysys = c[:polys]
-    print(polysys)
-    #computing the derivatives
+#     polysys = c[:polys]
+#     print(polysys)
+#     #computing the derivatives
 
-    polys = [x - x1, x11 - polysys[1], x111 - (derivative(polysys[1], x1) * x11 + derivative(polysys[1], x2) * polysys[2] + derivative(polysys[1], x3) * polysys[3])]
-    push!(polys, x1111 - (derivative(polys[3], x1) * x11 + derivative(polys[3], x2) * polysys[2] + derivative(polys[3], x3) * polysys[3] + derivative(polys[3], x11) * x111))
-    #push!(polys, x - x1)
-    print(polys)
+#     polys = [x - x1, x11 - polysys[1], x111 - (derivative(polysys[1], x1) * x11 + derivative(polysys[1], x2) * polysys[2] + derivative(polysys[1], x3) * polysys[3])]
+#     push!(polys, x1111 - (derivative(polys[3], x1) * x11 + derivative(polys[3], x2) * polysys[2] + derivative(polys[3], x3) * polysys[3] + derivative(polys[3], x11) * x111))
+#     #push!(polys, x - x1)
+#     print(polys)
 
-    #computing the generic system for polys
-    #polys_new = [sum([rand(1:500)*m for m in Oscar.monomials(p)]) for p in polys] 
-    # push!(polys_new, x1 - x)
-    # print(polys_new)  
+#     #computing the generic system for polys
+#     #polys_new = [sum([rand(1:500)*m for m in Oscar.monomials(p)]) for p in polys] 
+#     # push!(polys_new, x1 - x)
+#     # print(polys_new)  
     
     
-    mf = mixed_fiber_polytope(polys, implicit = false, epsinv = 1000000)
-    mf_size = length(lattice_points(mf))  
-    print(mf_size)
-    @info "Newton polytope for $(c[:name]) has the size $mf_size"
+#     mf = mixed_fiber_polytope(polys, implicit = false, epsinv = 10000)
+#     mf_size = length(lattice_points(mf))  
+#     print(mf_size)
+#     @info "Newton polytope for $(c[:name]) has the size $mf_size"
 
-end
+# end
 
 
 
