@@ -112,11 +112,7 @@ function mfp_vert(A::Support,
         push!(A_w, hcat(A_wi_cols...))
     end
 
-    msd_weights = [Int32[] for _ in 1:k+1]
-    for i in eachindex(coh_weights)
-        coh_vec = coh_weights[i]
-        msd_weights[i] = [Int32(round(e)) for e in epsinv*coh_vec] + rand(Int32(-100):Int32(100), length(coh_weights[i]))
-    end
+    msd_weights = approximate_lifting_vector(coh_weights, epsinv)
 
     mixed_subdiv = mixed_cells_overdet(pA, msd_weights)
 
@@ -304,13 +300,23 @@ function implicit_support(A::Support)
     return res
 end
 
-function approximate_lifting_vector(w::Vector{Vector{Float32}})
+function approximate_lifting_vector(w::Vector{Vector{Float32}}, epsinv::Int)
 
     if all(wi -> all(iszero, wi), w)
         return (Vector{Int32}).(w)
     end
 
-    max_entry, _ = findmax(hcat(w...))
+    max_entry, _ = findmax((abs).(vcat(w...)))
+    multip = epsinv / max_entry
+
+    res = Vector{Int32}[]
+    for wi in w
+        li = length(wi)
+        rnd = rand(-Int32(100):Int32(100), li) 
+        push!(res, [Int32(round(wij)) for wij in multip*wi] + rnd)
+    end
+
+    return res
 end
 
 end # module MixedFiberPolytope
