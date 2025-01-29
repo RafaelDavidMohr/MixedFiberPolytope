@@ -114,7 +114,7 @@ function mfp_vert(A::Support,
     msd_weights = [Int32[] for _ in 1:k+1]
     for i in eachindex(coh_weights)
         coh_vec = coh_weights[i]
-        msd_weights[i] = [Int32(round(e)) for e in epsinv*coh_vec]
+        msd_weights[i] = [Int32(round(e)) for e in epsinv*coh_vec] + rand(Int32(-100):Int32(100), length(coh_weights[i]))
     end
 
     mixed_subdiv = mixed_cells_overdet(pA, msd_weights)
@@ -265,7 +265,7 @@ end
 
 function qq_mod(a::QQFieldElem, p)
     F = GF(p)
-    b = (Int(numerator(a)) * invmod(Int(denominator(a)), p)) % p
+    b = (Int(numerator(a) % p) * invmod(Int(denominator(a) % p), p)) % p
     return F(b)
 end
 
