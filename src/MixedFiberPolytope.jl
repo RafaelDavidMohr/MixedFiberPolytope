@@ -80,8 +80,9 @@ function mixed_fiber_polytope(A::Support; epsinv = 2^24)
         w_rand = (qq_to_float).(w) + (rand(Float32, length(w)) ./ 10000)
         return mfp_vert(A, pA, fiber_dict, w_rand, epsinv)
     end
-
-    return construct_polytope(n - k, v_orac)
+    
+    mfp = construct_polytope(n - k, v_orac)
+    return mfp
 end
 
 function mfp_vert(A::Support,
@@ -233,7 +234,9 @@ end
 function construct_polytope(amb_dim::Int,
                             vert_oracle)
 
-    vrts = unique([vert_oracle(v) for v in vertices(cube(amb_dim))])
+    start_vs = vertices(cube(amb_dim))
+    vrts = unique([vert_oracle(v) for v in start_vs])
+    vert_comps = length(start_vs)
     facts_confirmed = Vector{QQFieldElem}[]
 
     all_confirmed = false
@@ -247,6 +250,7 @@ function construct_polytope(amb_dim::Int,
             println("vertex count: $(length(vrts))")
 
             new_vert = vert_oracle(nv)
+            vert_comps += 1
 
             if !(new_vert in vrts) # check if new vertex was actually obtained
                 
@@ -257,6 +261,8 @@ function construct_polytope(amb_dim::Int,
             end
         end
     end
+
+    println("$(vert_comps) vertex computations")
 
     return convex_hull(vrts)
 end
@@ -296,6 +302,15 @@ function implicit_support(A::Support)
     end
 
     return res
+end
+
+function approximate_lifting_vector(w::Vector{Vector{Float32}})
+
+    if all(wi -> all(iszero, wi), w)
+        return (Vector{Int32}).(w)
+    end
+
+    max_entry, _ = findmax(hcat(w...))
 end
 
 end # module MixedFiberPolytope
