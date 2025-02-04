@@ -3,11 +3,12 @@ module MixedFiberPolytope
 using Oscar
 using MixedSubdivisions
 using DynamicPolynomials
+using Combinatorics
 
-export mixed_fiber_polytope
+export mixed_fiber_polytope, mixed_subdiv
 
 const Support = Vector{Matrix{Int32}}
-const MixSub = Vector{Tuple{Int, Int, Int}}
+const MixCell = Vector{Tuple{Int, Int}}
 
 """
     mixed_fiber_polytope(F::Vector{P}; implicit = false, epsinv = 50000) where {P <: Union{MPolyRingElem, Polynomial}}
@@ -142,14 +143,14 @@ function construct_support(f::MPolyRingElem)
     return hcat([Vector{Int32}((numerator).(v)) for v in vertices(NP)]...)
 end
 
-function find_minima(A::Matrix{Int32}, w)
+function find_minima(A::Matrix, w, tol=2^-16)
 
     res = [1]
     minval = sum(w .* A[:, 1])
     
     for i in 2:size(A, 2)
         evali = sum(w .* A[:, i])
-        if evali == minval
+        if abs(evali - minval) < tol
             push!(res, i)
         elseif evali < minval
             minval = evali
@@ -160,11 +161,15 @@ function find_minima(A::Matrix{Int32}, w)
     return res
 end
 
-function get_exponent(A::Support, i, j)
+function find_face(A::Vector{<:Matrix}, w)
+    return [Tuple(find_minima(Ai, w)) for Ai in A]
+end
+
+function get_exponent(A::Vector{<:Matrix}, i, j)
     return A[i][:, j]
 end
 
-function ambient_dim(A::Support)
+function ambient_dim(A::Vector{<:Matrix})
     return length(get_exponent(A, 1, 1))
 end
 
@@ -175,6 +180,145 @@ function linear_span(A::Matrix{Int32})
     col0 = first(eachcol(A))
     return [v - col0 for v in eachcol(A)[2:end]]
 end
+
+# -- Mixed Subdivisions -- #
+
+function mixed_subdiv(A::Support, w)
+
+    A_w = [vcat(Ai, transpose(wi)) for (Ai, wi) in zip(A, w)]
+
+    cell_queue = [Tuple{Int, Int}[]]
+    cell_polyhedra = [entire_sp_poly(ambient_dim(A))]
+
+    res = MixCell[]
+    
+    k = length(A)
+    while !isempty(cell_queue)
+
+        cell, feas_pol = popfirst!(cell_queue), popfirst!(cell_polyhedra)
+        l = length(cell) + 1
+        if l > length(A)
+            push!(res, cell)
+            continue
+        end
+
+        A_wl = A_w[l]
+        for (i, j) in combinations(eachindex(eachcol(A_wl)), 2)
+            Pij = partial_cell_polyhedron(A_wl, i, j)
+            !is_feasible(Pij) && continue
+            Q = intersect(feas_pol, Pij)
+            if is_feasible(Q)
+                push!(cell_queue, vcat(cell, [(i,j)]))
+                push!(cell_polyhedra, Q)
+            end
+        end
+    end
+
+    keep_cells = Int[]
+    println(length(res))
+    for (i, C) in enumerate(res)
+        aff_span = affine_span(C, A_w)
+        N = nullspace(aff_span)
+        size(N, 2) != 1 && continue
+        v = N[:, 1]
+        iszero(last(v)) && continue
+        if last(v) < 0
+            v = -v
+        end
+        v = v * 1/last(v)
+        println(C)
+        println(v)
+        println("---")
+        if find_face(A_w, v) == C
+            push!(keep_cells, i)
+        end
+    end
+        
+    return res[keep_cells]
+end
+
+function partial_cell_polyhedron(A::Matrix{Float64}, i, j)
+    n = size(A, 1) - 1
+    
+    eq_mat = Array{Float64}(undef, 0, n)
+    eq_b = Float64[]
+    ineq_mat = Array{Float64}(undef, 0, n)
+    ineq_b = Float64[]
+
+    a, b = A[:, i], A[:, j]
+    eq_mat = vcat(eq_mat, permutedims(a[1:n]-b[1:n]))
+    push!(eq_b, b[n+1] - a[n+1])
+
+    for (l, al) in enumerate(eachcol(A))
+        l == i || l == j && continue
+        ineq_mat = vcat(ineq_mat, permutedims(a[1:n] - al[1:n]))
+        push!(ineq_b, al[n+1] - a[n+1])
+    end
+
+    return polyhedron((ineq_mat, ineq_b), (eq_mat, eq_b))
+end
+
+function affine_span(C::MixCell, A::Vector{Matrix{T}}) where T
+
+    res = Array{T}(undef, 0, ambient_dim(A))
+
+    for (i, Ci) in enumerate(C)
+        a0, a1 = get_exponent(A, i, Ci[1]), get_exponent(A, i, Ci[2])
+        res = vcat(res, permutedims(a1-a0))
+    end
+
+    return res
+end
+
+function entire_sp_poly(n)
+    A = Array{Float64}(undef, 0, n)
+    b = Float64[]
+    return polyhedron(Float64, (A, b))
+end
+
+# function is_extendible(C::MixCell, A::Support)
+
+#     n = ambient_dim(A) - 1
+
+#     ineq_mat = Array{Int}(undef, 0, n+1)
+#     ineq_b = Int[]
+
+#     # encode that last coordinate of linear functional is one
+#     eq_mat = permutedims([i == n+1 ? 1 : 0 for i in 1:n+1])
+#     eq_b = [1]
+
+#     # encode C with equalities/inequalities
+#     for (i, Ci) in enumerate(C)
+#         j, k = Ci[1], Ci[2]
+#         a, b = get_exponent(A, i, j), get_exponent(A, i, k)
+#         eq_mat = vcat(eq_mat, permutedims(a-b))
+#         push!(eq_b, 0)
+
+#         for (l, ail) in enumerate(eachcol(A[i]))
+#             l == j || l == k && continue
+#             ineq_mat = vcat(ineq_mat, permutedims(ail - a))
+#             push!(ineq_b, 0)
+#         end
+#     end
+    
+#     res = Tuple{Int, Int}[]
+#     k = length(C) + 1
+#     eq_mat_test = copy(eq_mat)
+#     eq_b = copy(eq_b)
+#     ineq_mat = copy(ineq_mat)
+#     ineq_b = copy(eq_b)
+#     for (i, j) in combinations(eachindex(eachcol(A[k])))
+#         aki, akj = get_exponent(A, k, i), get_exponent(A, k, j)
+#         eq_mat_test = vcat(eq_mat, permutedims(aki - akj))
+#         eq_b_test = vcat(eq_b, [0])
+
+#         for (l, ail) in enumerate(eachcol(A[k]))
+#             l == i || l == j && continue
+#             ineq_mat = vcat(ineq_mat, permutedims(ail - a))
+#             push!(ineq_b, 0)
+#         end
+        
+# end
 
 function mixed_cells_overdet(A::Support, w)
 
@@ -312,7 +456,7 @@ function approximate_lifting_vector(w::Vector{Vector{Float32}}, epsinv::Int)
     res = Vector{Int32}[]
     for wi in w
         li = length(wi)
-        rnd = rand(-Int32(100):Int32(100), li) 
+        rnd = rand(Int32(1):Int32(10), li) 
         push!(res, [Int32(round(wij)) for wij in multip*wi] + rnd)
     end
 
