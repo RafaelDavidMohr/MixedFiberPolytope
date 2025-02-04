@@ -77,7 +77,7 @@ function mixed_fiber_polytope(A::Support; epsinv = 2^24)
     end
 
     v_orac = w -> begin
-        w_rand = (qq_to_float).(w) + (rand(Float32, length(w)) ./ 10000)
+        w_rand = (qq_to_float).(w) + (rand(Float32, length(w)) ./ 100)
         return mfp_vert(A, pA, fiber_dict, w_rand, epsinv)
     end
     
@@ -243,7 +243,6 @@ function construct_polytope(amb_dim::Int,
 
         for nv in facts_with_nvs
             nv in facts_confirmed && continue
-            println("vertex count: $(length(vrts))")
 
             new_vert = vert_oracle(nv)
             vert_comps += 1
@@ -259,6 +258,7 @@ function construct_polytope(amb_dim::Int,
     end
 
     println("$(vert_comps) vertex computations")
+    println("$(length(vrts)) vertices in list")
 
     return convex_hull(vrts)
 end
@@ -312,10 +312,11 @@ function approximate_lifting_vector(w::Vector{Vector{Float32}}, epsinv::Int)
     res = Vector{Int32}[]
     for wi in w
         li = length(wi)
-        rnd = rand(-Int32(100):Int32(100), li) 
+        rnd = rand(Int32(1):Int32(10), li) 
         push!(res, [Int32(round(wij)) for wij in multip*wi] + rnd)
     end
 
+    nr = sum([norm(resi/multip - wi) for (resi, wi) in zip(res, w)])
     return res
 end
 
