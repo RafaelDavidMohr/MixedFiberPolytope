@@ -8,7 +8,11 @@ using Combinatorics
 export mixed_fiber_polytope, mixed_subdiv
 
 const Support = Vector{Matrix{Int32}}
-const MixCell = Vector{Tuple{Int, Int}}
+const MixCellInds = Vector{Tuple{Int, Int}}
+struct MixCell
+    inds::MixCellInds
+    normal::Vector{Float64}
+end
 
 """
     mixed_fiber_polytope(F::Vector{P}; implicit = false, epsinv = 50000) where {P <: Union{MPolyRingElem, Polynomial}}
@@ -78,8 +82,8 @@ function mixed_fiber_polytope(A::Support; epsinv = 2^24)
     end
 
     v_orac = w -> begin
-        w_rand = (qq_to_float).(w) + (rand(Float32, length(w)) ./ 10000)
-        return mfp_vert(A, pA, fiber_dict, w_rand, epsinv)
+        w_rand = (qq_to_float).(w) + (rand(Float64, length(w)) ./ 10000)
+        return mfp_vert(A, pA, fiber_dict, Vector(w_rand), epsinv)
     end
     
     mfp = construct_polytope(n - k, v_orac)
@@ -89,7 +93,7 @@ end
 function mfp_vert(A::Support,
                   pA::Support,
                   fiber_dict::Vector{Dict{Int, Vector{Int}}},
-                  w::Vector{Float32},
+                  w::Vector{Float64},
                   epsinv::Int)
 
     n = ambient_dim(A)
@@ -97,9 +101,9 @@ function mfp_vert(A::Support,
 
     A_w = Matrix{Int32}[]
 
-    w_ext = vcat(w, zeros(Float32, k))
+    w_ext = vcat(w, zeros(Float64, k))
 
-    coh_weights = [Float32[] for _ in 1:k+1]
+    coh_weights = [Float64[] for _ in 1:k+1]
     for (i, pAi) in enumerate(pA)
         A_wi_cols = Vector{Int32}[]
         for j in eachindex(eachcol(pAi))
@@ -113,7 +117,12 @@ function mfp_vert(A::Support,
         push!(A_w, hcat(A_wi_cols...))
     end
 
-    msd_weights = approximate_lifting_vector(coh_weights, epsinv)
+    # msd_weights = approximate_lifting_vector(coh_weights, epsinv)
+
+    msd_weights = Vector{Float64}[]
+    for cw in coh_weights
+        push!(msd_weights, cw + rand(Float64, length(cw)) ./ epsinv)
+    end
 
     mixed_subdiv = mixed_cells_overdet(pA, msd_weights)
 
@@ -183,12 +192,26 @@ end
 
 # -- Mixed Subdivisions -- #
 
+function vol(C::MixCell, A::Support)
+    res = 1
+    Cinds = C.inds
+    for (i, Ci) in enumerate(Cinds)
+        a, b = get_exponent(A, i, Ci[1]), get_exponent(A, i, Ci[2])
+        l = Int(norm(b-a))
+        res *= l
+    end
+    return res
+end
+
 function mixed_subdiv(A::Support, w)
 
+    println("Computing Mixed Subdivision...")
     A_w = [vcat(Ai, transpose(wi)) for (Ai, wi) in zip(A, w)]
 
     cell_queue = [Tuple{Int, Int}[]]
     cell_polyhedra = [entire_sp_poly(ambient_dim(A))]
+
+    nfeas_cache = Dict{Tuple{Int, Int, Int}, Bool}()
 
     res = MixCell[]
     
@@ -204,8 +227,12 @@ function mixed_subdiv(A::Support, w)
 
         A_wl = A_w[l]
         for (i, j) in combinations(eachindex(eachcol(A_wl)), 2)
+            get(nfeas_cache, (l, i, j), false) && continue
             Pij = partial_cell_polyhedron(A_wl, i, j)
-            !is_feasible(Pij) && continue
+            if !is_feasible(Pij)
+                nfeas_cache[(l, i, j)] = true
+                continue
+            end
             Q = intersect(feas_pol, Pij)
             if is_feasible(Q)
                 push!(cell_queue, vcat(cell, [(i,j)]))
@@ -214,8 +241,7 @@ function mixed_subdiv(A::Support, w)
         end
     end
 
-    keep_cells = Int[]
-    println(length(res))
+    res = MixCell[]
     for (i, C) in enumerate(res)
         aff_span = affine_span(C, A_w)
         N = nullspace(aff_span)
@@ -226,15 +252,12 @@ function mixed_subdiv(A::Support, w)
             v = -v
         end
         v = v * 1/last(v)
-        println(C)
-        println(v)
-        println("---")
         if find_face(A_w, v) == C
-            push!(keep_cells, i)
+            push!(res, MixCell(C, v[1:end-1]))
         end
     end
         
-    return res[keep_cells]
+    return res
 end
 
 function partial_cell_polyhedron(A::Matrix{Float64}, i, j)
@@ -258,7 +281,7 @@ function partial_cell_polyhedron(A::Matrix{Float64}, i, j)
     return polyhedron((ineq_mat, ineq_b), (eq_mat, eq_b))
 end
 
-function affine_span(C::MixCell, A::Vector{Matrix{T}}) where T
+function affine_span(C::MixCellInds, A::Vector{Matrix{T}}) where T
 
     res = Array{T}(undef, 0, ambient_dim(A))
 
@@ -276,50 +299,6 @@ function entire_sp_poly(n)
     return polyhedron(Float64, (A, b))
 end
 
-# function is_extendible(C::MixCell, A::Support)
-
-#     n = ambient_dim(A) - 1
-
-#     ineq_mat = Array{Int}(undef, 0, n+1)
-#     ineq_b = Int[]
-
-#     # encode that last coordinate of linear functional is one
-#     eq_mat = permutedims([i == n+1 ? 1 : 0 for i in 1:n+1])
-#     eq_b = [1]
-
-#     # encode C with equalities/inequalities
-#     for (i, Ci) in enumerate(C)
-#         j, k = Ci[1], Ci[2]
-#         a, b = get_exponent(A, i, j), get_exponent(A, i, k)
-#         eq_mat = vcat(eq_mat, permutedims(a-b))
-#         push!(eq_b, 0)
-
-#         for (l, ail) in enumerate(eachcol(A[i]))
-#             l == j || l == k && continue
-#             ineq_mat = vcat(ineq_mat, permutedims(ail - a))
-#             push!(ineq_b, 0)
-#         end
-#     end
-    
-#     res = Tuple{Int, Int}[]
-#     k = length(C) + 1
-#     eq_mat_test = copy(eq_mat)
-#     eq_b = copy(eq_b)
-#     ineq_mat = copy(ineq_mat)
-#     ineq_b = copy(eq_b)
-#     for (i, j) in combinations(eachindex(eachcol(A[k])))
-#         aki, akj = get_exponent(A, k, i), get_exponent(A, k, j)
-#         eq_mat_test = vcat(eq_mat, permutedims(aki - akj))
-#         eq_b_test = vcat(eq_b, [0])
-
-#         for (l, ail) in enumerate(eachcol(A[k]))
-#             l == i || l == j && continue
-#             ineq_mat = vcat(ineq_mat, permutedims(ail - a))
-#             push!(ineq_b, 0)
-#         end
-        
-# end
-
 function mixed_cells_overdet(A::Support, w)
 
     k = length(A) - 1
@@ -331,23 +310,25 @@ function mixed_cells_overdet(A::Support, w)
         # is_zero_mixed_volume(Ai) && continue
         wi = w[1:end .!= i]
 
-        cellsi = try
-            mixed_cells(Ai, wi)
-        catch e
-            for Aij in Ai
-                display(Aij)
-            end
-            rethrow(e)
-        end
+        # cellsi = try
+        #     mixed_cells(Ai, wi)
+        # catch e
+        #     for Aij in Ai
+        #         display(Aij)
+        #     end
+        #     rethrow(e)
+        # end
+
+        cellsi = mixed_subdiv(Ai, wi)
 
         i_supp_lifted = vcat(A[i], transpose(w[i]))
 
         for (j, a) in enumerate(eachcol(A[i]))
             for cell in cellsi
-                nv = normal(cell)
+                nv = cell.normal
                 min_indices = find_minima(i_supp_lifted, vcat(nv, [1]))
                 if min_indices == [j]
-                    new_cell = (i, j, MixedSubdivisions.volume(cell))
+                    new_cell = (i, j, vol(cell, A))
                     push!(result, new_cell)
                 end
             end
@@ -416,7 +397,12 @@ function qq_mod(a::QQFieldElem, p)
 end
 
 function qq_to_float(a::QQFieldElem)
-    return Float32(Int(numerator(a))/Int(denominator(a)))
+    return Float64(Int(numerator(a))/Int(denominator(a)))
+end
+
+function qq_to_int_vec(w::AbstractVector{QQFieldElem})
+    m = lcm((denominator).(w))
+    return [Int(numerator(e)) for e in m*w]
 end
 
 function add_key_or_push!(d::Dict{T, Vector{S}},
