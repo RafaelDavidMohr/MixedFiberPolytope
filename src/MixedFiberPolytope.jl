@@ -10,7 +10,7 @@ const Support = Vector{Matrix{Int32}}
 const MixSub = Vector{Tuple{Int, Int, Int}}
 
 """
-    mixed_fiber_polytope(F::Vector{P}; implicit = false, epsinv = 50000) where {P <: Union{MPolyRingElem, Polynomial}}
+    mixed_fiber_polytope(F::Vector{P}; implicit = false, epsinv = 2^29) where {P <: Union{MPolyRingElem, Polynomial}}
 
 If `implicit == false`, compute the mixed fiber polytope associated to
 the Newton polyhedra of `F` w.r.t. the first `n-k` variables where `k
@@ -26,7 +26,7 @@ affect the computation time but may cause overflow errors.
 """
 function mixed_fiber_polytope(F::Vector{P};
                               implicit = false,
-                              epsinv = 2^24) where {P <: Union{MPolyRingElem, Polynomial}}
+                              epsinv = 2^29) where {P <: Union{MPolyRingElem, Polynomial}}
     A = construct_support(F)
     if implicit
         @assert ambient_dim(A) == length(A) - 1 "unsuitable number of variables"
@@ -36,7 +36,7 @@ function mixed_fiber_polytope(F::Vector{P};
 end
 
 """
-    mixed_fiber_polytope(A::Vector{Matrix{Int32}})
+    mixed_fiber_polytope(A::Vector{Matrix{Int32}}; epsinv = 2^29)
 
 Compute the mixed fiber polytope associated to the convex hulls of the
 columns of each matrix in `A` w.r.t. the first `n-k` dimensions where
@@ -46,7 +46,7 @@ columns of each matrix in `A` w.r.t. the first `n-k` dimensions where
 the more likely the output is correct. The size of `epsinv` does not
 affect the computation time but may cause overflow errors.
 """
-function mixed_fiber_polytope(A::Support; epsinv = 2^24)
+function mixed_fiber_polytope(A::Support; epsinv = 2^29)
 
     n = ambient_dim(A)
     k = length(A) - 1
