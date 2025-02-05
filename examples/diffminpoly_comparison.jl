@@ -20,6 +20,6 @@ for c in cases
     minpoly_ord = DiffMinPoly.minpoly_order(ode, x)                
 
     bound_size = size(DiffMinPoly.f_min_support(ode, x, DiffMinPoly.minpoly_order(ode, x)))[1]           
-    @info "Bound accordong to 'Projecting dynamical systems via a support bound' for the system "
+    @info "Bound according to 'Projecting dynamical systems via a support bound' for the system "
     @info "has the size $bound_size"
 end       
