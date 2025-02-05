@@ -1,6 +1,6 @@
 # MixedFiberPolytope
 
-A julia package to compute mixed fiber polytopes as defined
+A small julia package to compute mixed fiber polytopes as defined
 [here](https://link.springer.com/article/10.1007/s11853-008-0015-2).
 
 # Installation
