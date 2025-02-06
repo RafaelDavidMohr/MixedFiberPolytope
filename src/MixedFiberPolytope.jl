@@ -77,7 +77,7 @@ function mixed_fiber_polytope(A::Support; epsinv = 2^29)
     end
 
     v_orac = w -> begin
-        w_rand = Vector((qq_to_float).(w) + (rand(Float64, length(w)) ./ 10))
+        w_rand = Vector((qq_to_float).(w))
         return mfp_vert(A, pA, fiber_dict, w_rand, epsinv)
     end
     
@@ -230,14 +230,23 @@ end
 function construct_polytope(amb_dim::Int,
                             vert_oracle)
 
-    start_vs = vertices(cube(amb_dim))
-    vrts = unique([vert_oracle(v) for v in start_vs])
-    vert_comps = length(start_vs)
+    vrts = Vector{Int64}[]
+    init_covecs = vertices(cube(amb_dim))
+    for covec in init_covecs
+        p = [QQ(1//pi) for pi in rand(union(100:1000, -1000:-100), amb_dim)]
+        v = vert_oracle(covec + p)
+        push!(vrts, v)
+    end
+
     facts_confirmed = Vector{QQFieldElem}[]
+    vert_comps = length(init_covecs)
 
     all_confirmed = false
+    P = convex_hull(vrts)
+    @assert dim(P) >= amb_dim - 1
     while !all_confirmed
         P = convex_hull(vrts)
+        println("vertex count: $(length(vertices(P)))")
         facts_with_nvs = [-normal_vector(fc) for fc in facets(P)]
         all_confirmed = true
 
@@ -247,8 +256,8 @@ function construct_polytope(amb_dim::Int,
             new_vert = vert_oracle(nv)
             vert_comps += 1
 
-            if !(new_vert in vrts) # check if new vertex was actually obtained
-                
+            if !(new_vert in P) # check if new vertex was actually obtained
+
                 push!(vrts, new_vert)
                 all_confirmed = false
             else
@@ -258,7 +267,6 @@ function construct_polytope(amb_dim::Int,
     end
 
     println("$(vert_comps) vertex computations")
-    println("$(length(vrts)) vertices in list")
 
     return convex_hull(vrts)
 end
@@ -273,6 +281,10 @@ end
 
 function qq_to_float(a::QQFieldElem)
     return Float64(Int(numerator(a))/Int(denominator(a)))
+end
+
+function qq_to_float(a::Integer)
+    return Float64(a)
 end
 
 function add_key_or_push!(d::Dict{T, Vector{S}},
@@ -312,11 +324,10 @@ function approximate_lifting_vector(w::Vector{Vector{Float64}}, epsinv::Int)
     res = Vector{Int32}[]
     for wi in w
         li = length(wi)
-        rnd = rand(Int32(1):Int32(10), li) 
+        rnd = rand(Int32(-10):Int32(10), li) 
         push!(res, [Int32(round(wij)) for wij in multip*wi] + rnd)
     end
 
-    nr = sum([norm(resi/multip - wi) for (resi, wi) in zip(res, w)])
     return res
 end
 

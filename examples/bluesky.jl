@@ -65,7 +65,7 @@ push!(
     push!(polys, x13 - (derivative(polys[3], x1) * x11 + derivative(polys[3], x2) * polysys[2] + derivative(polys[3], x3) * polysys[3] + derivative(polys[3], x11) * x12))
    
     #computing mixed fiber polytope
-    mf = mixed_fiber_polytope(polys, implicit = false, epsinv = 2^29)
+    mf = mixed_fiber_polytope(polys, implicit = false, epsinv = 2^30)
     mf_size = length(lattice_points(mf))  
     @info "Newton polytope for $(c[:name]) has the size $mf_size and $(length(vertices(mf))) vertices"
 
@@ -122,9 +122,9 @@ push!(
         )
    
     #computing mixed fiber polytope
-    mf = mixed_fiber_polytope(polys, implicit = false, epsinv = 2^24)
+    mf = mixed_fiber_polytope(polys, implicit = false, epsinv = 2^30)
     mf_size = length(lattice_points(mf))  
-    @info "Newton polytope for $(c[:name]) has the size $mf_size"
+    @info "Newton polytope for $(c[:name]) has the size $mf_size and $(length(vertices(mf))) verts"
 
 end
 
