@@ -225,7 +225,7 @@ function implicit_equation(mfp::Polyhedron, F::Vector{P}, p) where {P <: MPolyRi
     return mat
 end
 
-# -- Higgins Algorithm -- #
+# -- Huggins Algorithm -- #
 
 function construct_polytope(amb_dim::Int,
                             vert_oracle)
