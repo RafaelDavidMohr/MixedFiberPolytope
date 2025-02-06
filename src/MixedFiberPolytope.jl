@@ -77,7 +77,7 @@ function mixed_fiber_polytope(A::Support; epsinv = 2^29)
     end
 
     v_orac = w -> begin
-        w_rand = (qq_to_float).(w) + (rand(Float32, length(w)) ./ 100)
+        w_rand = Vector((qq_to_float).(w) + (rand(Float64, length(w)) ./ 10))
         return mfp_vert(A, pA, fiber_dict, w_rand, epsinv)
     end
     
@@ -88,7 +88,7 @@ end
 function mfp_vert(A::Support,
                   pA::Support,
                   fiber_dict::Vector{Dict{Int, Vector{Int}}},
-                  w::Vector{Float32},
+                  w::Vector{Float64},
                   epsinv::Int)
 
     n = ambient_dim(A)
@@ -96,9 +96,9 @@ function mfp_vert(A::Support,
 
     A_w = Matrix{Int32}[]
 
-    w_ext = vcat(w, zeros(Float32, k))
+    w_ext = vcat(w, zeros(Float64, k))
 
-    coh_weights = [Float32[] for _ in 1:k+1]
+    coh_weights = [Float64[] for _ in 1:k+1]
     for (i, pAi) in enumerate(pA)
         A_wi_cols = Vector{Int32}[]
         for j in eachindex(eachcol(pAi))
@@ -272,7 +272,7 @@ function qq_mod(a::QQFieldElem, p)
 end
 
 function qq_to_float(a::QQFieldElem)
-    return Float32(Int(numerator(a))/Int(denominator(a)))
+    return Float64(Int(numerator(a))/Int(denominator(a)))
 end
 
 function add_key_or_push!(d::Dict{T, Vector{S}},
@@ -300,7 +300,7 @@ function implicit_support(A::Support)
     return res
 end
 
-function approximate_lifting_vector(w::Vector{Vector{Float32}}, epsinv::Int)
+function approximate_lifting_vector(w::Vector{Vector{Float64}}, epsinv::Int)
 
     if all(wi -> all(iszero, wi), w)
         return (Vector{Int32}).(w)
