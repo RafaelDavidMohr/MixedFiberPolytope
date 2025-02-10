@@ -196,6 +196,10 @@ function mixed_cells_overdet(A::Support, w)
             rethrow(e)
         end
 
+        if !all(is_fine, cellsi)
+            error("Mixed subdivision not fine. Lowering `epsinv` may help.")
+        end
+            
         i_supp_lifted = vcat(A[i], transpose(w[i]))
 
         for (j, a) in enumerate(eachcol(A[i]))
@@ -233,10 +237,11 @@ function construct_polytope(amb_dim::Int,
     vrts = Vector{Int64}[]
     init_covecs = vertices(cube(amb_dim))
     for covec in init_covecs
-        p = [QQ(1//pi) for pi in rand(union(100:1000, -1000:-100), amb_dim)]
+        p = [QQ(1//pi) for pi in rand(union(1000:10000, -10000:-1000), amb_dim)]
         v = vert_oracle(covec + p)
         push!(vrts, v)
     end
+
 
     facts_confirmed = Vector{QQFieldElem}[]
     vert_comps = length(init_covecs)
@@ -314,17 +319,17 @@ end
 
 function approximate_lifting_vector(w::Vector{Vector{Float64}}, epsinv::Int)
 
-    if all(wi -> all(iszero, wi), w)
-        return (Vector{Int32}).(w)
+    multip = if all(wi -> all(iszero, wi), w)
+        one(Float64)
+    else
+        max_entry, _ = findmax((abs).(vcat(w...)))
+        epsinv / max_entry
     end
-
-    max_entry, _ = findmax((abs).(vcat(w...)))
-    multip = epsinv / max_entry
 
     res = Vector{Int32}[]
     for wi in w
         li = length(wi)
-        rnd = rand(Int32(-10):Int32(10), li) 
+        rnd = rand(Int32(-100):Int32(100), li) 
         push!(res, [Int32(round(wij)) for wij in multip*wi] + rnd)
     end
 
