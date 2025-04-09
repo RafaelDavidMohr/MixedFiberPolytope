@@ -168,12 +168,13 @@ function ambient_dim(A::Support)
     return length(get_exponent(A, 1, 1))
 end
 
-function linear_span(A::Matrix{Int32})
-    if size(A, 2) == 1
+function linear_span(A::Vector{Vector{<:Int}})
+
+    if isone(length(A))
         return [zeros(Int32, size(A, 1))]
     end
-    col0 = first(eachcol(A))
-    return [v - col0 for v in eachcol(A)[2:end]]
+    col0 = first(A)
+    return hcat([v - col0 for v in A[2:end]]...)
 end
 
 function mixed_cells_overdet(A::Support, w)
@@ -231,37 +232,55 @@ end
 
 # -- Huggins Algorithm -- #
 
+function random_normal_vector(mat)
+    K = kernel(mat, side = :left)
+    return sum(rand(-1000:1000, size(K, 2)) .* eachcol(K))
+end
+
+# affine span encoded by mat + basepoint
+function is_in_affine_span(mat, basepoint, v)
+    w = v - basepoint
+    return rank(mat) == rank(vcat(mat, w))
+end
+
 function construct_polytope(amb_dim::Int,
                             vert_oracle)
 
     vrts = Vector{Int64}[]
-    init_covecs = vertices(cube(amb_dim))
-    for covec in init_covecs
-        p = [QQ(1//pi) for pi in rand(union(1000:10000, -10000:-1000), amb_dim)]
-        v = vert_oracle(covec + p)
+
+    # guess initial vertex
+    w = rand(-1000:1000, amb_dim)
+    v0 = vert_oracle(w)
+    push!(vrts, v0)
+    mat = zeros(Int, amb_dim)
+
+    while rank(mat) < amb_dim
+        w = random_normal_vector(mat)
+        v = vert_oracle(w)
+        if is_in_affine_span(mat, v0, v)
+            v = vert_oracle(-w)
+            @assert !is_in_affine_span(mat, v0, v)
+        end
         push!(vrts, v)
+        mat = hcat(mat, v)
     end
 
-
     facts_confirmed = Vector{QQFieldElem}[]
-    vert_comps = length(init_covecs)
 
     all_confirmed = false
-    P = convex_hull(vrts)
-    @assert dim(P) >= amb_dim - 1
+    P = convex_hull(vrts, non_redundant = true) # this is a bit dangerous
     while !all_confirmed
-        P = convex_hull(vrts)
-        println("vertex count: $(length(vertices(P)))")
-        facts_with_nvs = [-normal_vector(fc) for fc in facets(P)]
+        
+        println("vertex count: $(vrts)")
+        facts_with_nvs = [(fc, -normal_vector(fc)) for fc in facets(P)] # min convention
         all_confirmed = true
 
-        for nv in facts_with_nvs
+        for (fc, nv) in facts_with_nvs
             nv in facts_confirmed && continue
 
             new_vert = vert_oracle(nv)
-            vert_comps += 1
 
-            if !(new_vert in P) # check if new vertex was actually obtained
+            if fc.a * v != fc.b # check if new vertex was actually obtained
 
                 push!(vrts, new_vert)
                 all_confirmed = false
@@ -269,9 +288,9 @@ function construct_polytope(amb_dim::Int,
                 push!(facts_confirmed, nv)
             end
         end
-    end
 
-    println("$(vert_comps) vertex computations")
+        P = convex_hull(vrts, non_redundant = true)
+    end
 
     return convex_hull(vrts)
 end
