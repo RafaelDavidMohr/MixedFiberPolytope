@@ -126,6 +126,33 @@ function mfp_vert(A::Support,
     return res
 end
 
+function mfp_supp_function(A::Support,
+                           pA::Support,
+                           fiber_dict::Vector{Dict{Int, Vector{Int}}},
+                           w::Vector{Int})
+
+    n = ambient_dim(A)
+    k = length(A) - 1
+
+    A_w = Matrix{Int32}[]
+
+    w_ext = vcat(w, zeros(Int, k))
+
+    for (i, pAi) in enumerate(pA)
+        A_wi_cols = Vector{Int32}[]
+        for (j, col) in enumerate(eachcol(pAi))
+            preim_indices = fiber_dict[i][j]
+            minval = minimum(l -> sum(w_ext .* get_exponent(A, i, l)),
+                             preim_indices)
+            push!(A_wi_cols, vcat(col, [0]))
+            push!(A_wi_cols, vcat(col, [minval]))
+        end
+        push!(A_w, hcat(A_wi_cols...))
+    end
+
+    return mixed_volume(Aw)
+end
+
 # -- Helper functions for Supports -- #
 
 function construct_support(F::Vector{P}) where {P <: MPolyRingElem}
@@ -230,17 +257,57 @@ function implicit_equation(mfp::Polyhedron, F::Vector{P}, p) where {P <: MPolyRi
     return mat
 end
 
-# -- Huggins Algorithm -- #
+# -- Polytope reconstruction -- #
 
 function random_normal_vector(mat)
     K = kernel(mat, side = :left)
-    return sum(rand(-1000:1000, size(K, 2)) .* eachcol(K))
+    return sum(rand(-1000:1000, size(K, 1)) .* eachrow(K))
+end
+
+function cat_col(mat, w)
+    return hcat(mat, matrix(ZZ, size(mat, 1), 1, w))
+end
+
+function vertex_from_support_function(supp_func, w::Vector{Int})
+
+    n = length(w)
+    basis = [[j == i ? abs(w[i]) : 0 for j in 1:n] for i in 1:n] 
+    cone_vecs = Vector{QQFieldElem}[]
+    cone_vec_vals = QQFieldElem[]
+
+    w_val = supp_func(w)
+
+    for b in basis
+        b_val = supp_func(b)
+        c_vec = (w + b) .// 2
+        c_vec_val = supp_func(c_vec)
+        c_vec_val_exp = (w_val + b_val) // 2
+        
+        while c_vec_val != c_vec_val_exp
+            c_vec_val_exp = (w_val + c_vec_val) // 2
+            c_vec = (w + c_vec) .// 2
+            c_vec_val = supp_func(c_vec)
+        end
+
+        push!(cone_vecs, c_vec)
+        push!(cone_vec_vals, c_vec_val)
+    end
+
+    # test linearity
+    mat = matrix(QQ, transpose(hcat(cone_vecs...)))
+    cand_vert = solve(mat, cone_vec_vals, side = :right)
+
+    if sum(cand_vert .* w) != w_val
+        error("cone construction failed")
+    end
+
+    return cand_vert
 end
 
 # affine span encoded by mat + basepoint
 function is_in_affine_span(mat, basepoint, v)
     w = v - basepoint
-    return rank(mat) == rank(vcat(mat, w))
+    return rank(mat) == rank(cat_col(mat, w))
 end
 
 function construct_polytope(amb_dim::Int,
@@ -252,7 +319,7 @@ function construct_polytope(amb_dim::Int,
     w = rand(-1000:1000, amb_dim)
     v0 = vert_oracle(w)
     push!(vrts, v0)
-    mat = zeros(Int, amb_dim)
+    mat = zero_matrix(ZZ, amb_dim, 0)
 
     while rank(mat) < amb_dim
         w = random_normal_vector(mat)
@@ -262,37 +329,42 @@ function construct_polytope(amb_dim::Int,
             @assert !is_in_affine_span(mat, v0, v)
         end
         push!(vrts, v)
-        mat = hcat(mat, v)
+        mat = cat_col(mat, v-v0)
     end
 
-    facts_confirmed = Vector{QQFieldElem}[]
+    facts_confirmed = AffineHalfspace{QQFieldElem}[]
 
     all_confirmed = false
-    P = convex_hull(vrts, non_redundant = true) # this is a bit dangerous
     while !all_confirmed
+        P = convex_hull(vrts, non_redundant = true) # this is a bit dangerous
         
-        println("vertex count: $(vrts)")
-        facts_with_nvs = [(fc, -normal_vector(fc)) for fc in facets(P)] # min convention
+        println("vertex count: $(length(vrts))")
+        facts = facets(P)
         all_confirmed = true
 
-        for (fc, nv) in facts_with_nvs
-            nv in facts_confirmed && continue
+        for fc in facts
+            fc in facts_confirmed && continue
 
-            new_vert = vert_oracle(nv)
+            new_vert = vert_oracle(-fc.a[1, :])
 
-            if fc.a * v != fc.b # check if new vertex was actually obtained
+            if first(fc.a * new_vert) != fc.b # check if new vertex was actually obtained
+                if new_vert in vrts
+                    println(fc.a * new_vert)
+                    println(fc.b)
+                    println(new_vert)
+                    error("")
+                end
 
                 push!(vrts, new_vert)
                 all_confirmed = false
+                break
             else
-                push!(facts_confirmed, nv)
+                push!(facts_confirmed, fc)
             end
         end
-
-        P = convex_hull(vrts, non_redundant = true)
     end
 
-    return convex_hull(vrts)
+    return convex_hull(vrts, non_redundant = true)
 end
 
 # -- Other functions -- #
