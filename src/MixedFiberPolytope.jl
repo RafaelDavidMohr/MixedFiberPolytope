@@ -25,14 +25,13 @@ the more likely the output is correct. The size of `epsinv` does not
 affect the computation time but may cause overflow errors.
 """
 function mixed_fiber_polytope(F::Vector{P};
-                              implicit = false,
-                              epsinv = 100000) where {P <: Union{MPolyRingElem, Polynomial}}
+                              implicit = false) where {P <: Union{MPolyRingElem, Polynomial}}
     A = construct_support(F)
     if implicit
         @assert ambient_dim(A) == length(A) - 1 "unsuitable number of variables"
         A = implicit_support(A)
     end
-    return mixed_fiber_polytope(A, epsinv = epsinv)
+    return mixed_fiber_polytope(A)
 end
 
 """
@@ -46,7 +45,7 @@ columns of each matrix in `A` w.r.t. the first `n-k` dimensions where
 the more likely the output is correct. The size of `epsinv` does not
 affect the computation time but may cause overflow errors.
 """
-function mixed_fiber_polytope(A::Support; epsinv = 100000)
+function mixed_fiber_polytope(A::Support)
 
     n = ambient_dim(A)
     k = length(A) - 1
@@ -76,12 +75,11 @@ function mixed_fiber_polytope(A::Support; epsinv = 100000)
         push!(pA, pAi)
     end
 
-    v_orac = w -> begin
-        w_rand = Vector((qq_to_float).(w))
-        return mfp_vert(A, pA, fiber_dict, w_rand, epsinv)
+    supp_func = w -> begin
+        return mfp_supp_function(A, pA, fiber_dict, w)
     end
     
-    mfp = construct_polytope(n - k, v_orac)
+    mfp = construct_polytope(n - k, supp_func)
     return mfp
 end
 
@@ -129,28 +127,29 @@ end
 function mfp_supp_function(A::Support,
                            pA::Support,
                            fiber_dict::Vector{Dict{Int, Vector{Int}}},
-                           w::Vector{Int})
+                           w::Vector)
 
     n = ambient_dim(A)
     k = length(A) - 1
 
-    A_w = Matrix{Int32}[]
+    A_w = Matrix{QQFieldElem}[]
 
-    w_ext = vcat(w, zeros(Int, k))
+    w_ext = vcat(w, zeros(QQ, k))
 
     for (i, pAi) in enumerate(pA)
-        A_wi_cols = Vector{Int32}[]
+        A_wi_cols = Vector{QQFieldElem}[]
         for (j, col) in enumerate(eachcol(pAi))
             preim_indices = fiber_dict[i][j]
             minval = minimum(l -> sum(w_ext .* get_exponent(A, i, l)),
                              preim_indices)
-            push!(A_wi_cols, vcat(col, [0]))
-            push!(A_wi_cols, vcat(col, [minval]))
+            push!(A_wi_cols, vcat(Vector{QQFieldElem}(col), [0]))
+            push!(A_wi_cols, vcat(Vector{QQFieldElem}(col), [minval]))
         end
         push!(A_w, hcat(A_wi_cols...))
     end
 
-    return mixed_volume(Aw)
+    polytopes = [convex_hull(eachcol(A_wi)) for A_wi in A_w]
+    return QQ(Oscar.Polymake.polytope.mixed_volume([p.pm_polytope for p in polytopes]...))
 end
 
 # -- Helper functions for Supports -- #
@@ -265,10 +264,10 @@ function random_normal_vector(mat)
 end
 
 function cat_col(mat, w)
-    return hcat(mat, matrix(ZZ, size(mat, 1), 1, w))
+    return hcat(mat, matrix(QQ, size(mat, 1), 1, w))
 end
 
-function vertex_from_support_function(supp_func, w::Vector{Int})
+function vertex_from_support_function(supp_func, w::Vector)
 
     n = length(w)
     basis = [[j == i ? abs(w[i]) : 0 for j in 1:n] for i in 1:n] 
@@ -311,21 +310,21 @@ function is_in_affine_span(mat, basepoint, v)
 end
 
 function construct_polytope(amb_dim::Int,
-                            vert_oracle)
+                            supp_function)
 
-    vrts = Vector{Int64}[]
+    vrts = Vector{QQFieldElem}[]
 
     # guess initial vertex
     w = rand(-1000:1000, amb_dim)
-    v0 = vert_oracle(w)
+    v0 = vertex_from_support_function(supp_function, w)
     push!(vrts, v0)
-    mat = zero_matrix(ZZ, amb_dim, 0)
+    mat = zero_matrix(QQ, amb_dim, 0)
 
     while rank(mat) < amb_dim
         w = random_normal_vector(mat)
-        v = vert_oracle(w)
+        v = vertex_from_support_function(supp_function, w)
         if is_in_affine_span(mat, v0, v)
-            v = vert_oracle(-w)
+            v = vertex_from_support_function(supp_function, -w)
             @assert !is_in_affine_span(mat, v0, v)
         end
         push!(vrts, v)
@@ -345,22 +344,15 @@ function construct_polytope(amb_dim::Int,
         for fc in facts
             fc in facts_confirmed && continue
 
-            new_vert = vert_oracle(-fc.a[1, :])
-
-            if first(fc.a * new_vert) != fc.b # check if new vertex was actually obtained
-                if new_vert in vrts
-                    println(fc.a * new_vert)
-                    println(fc.b)
-                    println(new_vert)
-                    error("")
-                end
-
-                push!(vrts, new_vert)
-                all_confirmed = false
-                break
-            else
+            if supp_function(-fc.a[1, :]) == -fc.b
                 push!(facts_confirmed, fc)
+                continue
             end
+
+            new_vert = vertex_from_support_function(supp_function, -fc.a[1, :])
+            push!(vrts, new_vert)
+            all_confirmed = false
+            break
         end
     end
 
