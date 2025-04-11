@@ -132,24 +132,34 @@ function mfp_supp_function(A::Support,
     n = ambient_dim(A)
     k = length(A) - 1
 
-    A_w = Matrix{QQFieldElem}[]
+    A_w_1 = Matrix{QQFieldElem}[]
+    A_w_2 = Matrix{QQFieldElem}[]
 
     w_ext = vcat(w, zeros(QQ, k))
 
     for (i, pAi) in enumerate(pA)
-        A_wi_cols = Vector{QQFieldElem}[]
+        A_wi_1_cols = Vector{QQFieldElem}[]
+        A_wi_2_cols = Vector{QQFieldElem}[]
         for (j, col) in enumerate(eachcol(pAi))
             preim_indices = fiber_dict[i][j]
             minval = minimum(l -> sum(w_ext .* get_exponent(A, i, l)),
                              preim_indices)
-            push!(A_wi_cols, vcat(Vector{QQFieldElem}(col), [0]))
-            push!(A_wi_cols, vcat(Vector{QQFieldElem}(col), [minval]))
+            if minval == 0
+                push!(A_wi_1_cols, vcat(Vector{QQFieldElem}(col), [0]))
+                push!(A_wi_2_cols, vcat(Vector{QQFieldElem}(col), [0]))
+            elseif minval > 0
+                push!(A_wi_1_cols, vcat(Vector{QQFieldElem}(col), [minval]))
+                push!(A_wi_1_cols, vcat(Vector{QQFieldElem}(col), [0]))
+            else
+                push!(A_wi_2_cols, vcat(Vector{QQFieldElem}(col), [minval]))
+                push!(A_wi_2_cols, vcat(Vector{QQFieldElem}(col), [0]))
+            end
         end
-        push!(A_w, hcat(A_wi_cols...))
+        push!(A_w_1, hcat(A_wi_1_cols...))
+        push!(A_w_2, hcat(A_wi_2_cols...))
     end
 
-    polytopes = [convex_hull(eachcol(A_wi)) for A_wi in A_w]
-    return QQ(Oscar.Polymake.polytope.mixed_volume([p.pm_polytope for p in polytopes]...))
+    return mixed_vol(A_w_1) - mixed_vol(A_w_2)
 end
 
 # -- Helper functions for Supports -- #
@@ -360,6 +370,11 @@ function construct_polytope(amb_dim::Int,
 end
 
 # -- Other functions -- #
+
+function mixed_vol(A)
+    polytopes = [convex_hull(eachcol(A_i)) for A_i in A]
+    return QQ(Oscar.Polymake.polytope.mixed_volume([p.pm_polytope for p in polytopes]...))
+end
 
 function qq_mod(a::QQFieldElem, p)
     F = GF(p)
