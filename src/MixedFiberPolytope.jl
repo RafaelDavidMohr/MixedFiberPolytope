@@ -265,6 +265,7 @@ function construct_polytope(amb_dim::Int,
 
                 push!(vrts, new_vert)
                 all_confirmed = false
+                break
             else
                 push!(facts_confirmed, nv)
             end
